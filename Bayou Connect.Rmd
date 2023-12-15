@@ -21,10 +21,10 @@ curl https://staging.bayou.energy/api/v1/customers -XPOST -H "Content-Type: appl
 ```{r}
 bayou_token <- 'test_174_b4b7c210bd8595bb624ec66e93b273c2d6485b2060dca91da05c1c2ebb4adea1'
 
-curl_translate('curl https://staging.bayou.energy/api/v1/customers -XPOST -H \"Content-Type: application/json\" --data \'
+curl_translate('curl https://staging.bayou.energy/api/v1/customers -XPOST -H "Content-Type: application/json" --data \'
 {
-  \"email\": \"m.scott@dundermifflin.com\",
-  \"utility\": \"speculoos_power\"
+  "email": "m.scott@dundermifflin.com",
+  "utility": "speculoos_power"
 }
 \' -u test_174_b4b7c210bd8595bb624ec66e93b273c2d6485b2060dca91da05c1c2ebb4adea1:')
 ```
@@ -32,29 +32,28 @@ curl_translate('curl https://staging.bayou.energy/api/v1/customers -XPOST -H \"C
 
 ```{r}
 
-request("https://staging.bayou.energy/api/v1/customers") %>% 
+req <- request("https://staging.bayou.energy/api/v1/customers") %>% 
   req_method("POST") %>% 
-  req_body_raw('{"email" = "m.scott@dundermifflin.com",  "utility" = "speculoos_power"}', "application/json") %>% 
-  req_auth_basic("test_174_b4b7c210bd8595bb624ec66e93b273c2d6485b2060dca91da05c1c2ebb4adea1", "") %>% 
-  req_perform()
-
-#not working yet
-
-req <- request('https://staging.bayou.energy/api/v1/customers') %>% 
-  req_headers(Authorization = paste("Bearer", bayou_token)) %>% 
-  req_url_query('utility' = 'speculoos_power', 'email' = 'm.scott@dundermifflin.com')
-
+  req_headers(
+    `"Content-Type` = '',
+    #`"Content-Type` = "",
+  ) %>% 
+  req_body_raw("\n{\n  \"email\": \"m.scott@dundermifflin.com\",\n  \"utility\": \"speculoos_power\"\n}\n", "application/x-www-form-urlencoded") %>% 
+  #req_auth_basic("test_174_b4b7c210bd8595bb624ec66e93b273c2d6485b2060dca91da05c1c2ebb4adea1", "") 
+  req_auth_basic(bayou_token, "") 
 
 req_dry_run(req)
 
 resp <- req_perform(req)
 resp_json <- resp %>% resp_body_json()
-data_df <- as.data.frame(resp_json)
-data_df
 
-#api_token <- data_df$token
+#data_df <- as.data.frame(resp_json)
+#data_df
 
-#api_token
+resp_json
+resp_json$id
+resp_json$onboarding_link
+resp_json$onboarding_token
 
 ```
 {
@@ -94,7 +93,13 @@ req <- request("https://staging.bayou.energy/api/v1/customers/2214/bills") %>%
 
 resp <- req_perform(req)
 
-resp_json <- resp %>% resp_body_json()
+resp %>% resp_body_json() %>% str()
+resp %>% resp_body_json()  
+
+resp_json <- resp %>% resp_body_json() 
+
+resp %>% resp_body_json() 
+
 data_df <- as.data.frame(resp_json)
 data_df
 ```

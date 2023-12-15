@@ -1,0 +1,241 @@
+---
+title: "Bayou Interval Data"
+output: html_notebook
+---
+
+
+```{r}
+
+library(tidyverse)
+library(httr2)
+library(httr)
+library(jsonlite)
+```
+
+
+```{r}
+bayou_token <- 'test_175_0c11cfd27240e5bb16e56bd0200013696e3fdeac70db824947a38190df630dc2'
+```
+
+```{r eval=FALSE, include=FALSE}
+curl_translate("curl --request GET \
+     --url https://bayou.energy/api/v2/customers/customer_id/intervals \
+     --header 'accept: application/json'")
+```
+
+
+```{r eval=FALSE, include=FALSE}
+
+customer_id <- 2332
+
+#2214 #Michael Scott
+#2332 #James Gordey PSE
+#2314 #dhanur
+#2301 #James Gordey SCL
+#2287 #Mike Cozart
+#2276 #Matt Forni
+
+
+
+req <- request(paste("https://bayou.energy/api/v2/customers/",customer_id,"/intervals", sep="")) %>% 
+  req_method("GET") %>% 
+  req_headers(
+    accept = "application/json",
+  ) %>% 
+  req_auth_basic(bayou_token, "") 
+
+req_dry_run(req)
+
+resp <- req_perform(req)
+resp_json <- resp %>% resp_body_json()
+data_df <- as.data.frame(resp_json)
+data_df
+```
+
+```{r}
+
+customer_id <- 2314
+
+#2214 #Michael Scott
+#2332 #James Gordey PSE
+#Gas heating, no AC, gas stove, gas hot water heater
+#2314 #dhanur
+#2301 #James Gordey SCL
+#2287 #Mike Cozart
+#2276 #Matt Forni
+
+url <- paste("https://staging.bayou.energy/api/v2/customers/",customer_id,"/intervals", sep="")
+
+resp <- VERB("GET", url, add_headers('authorization' = 'Basic dGVzdF8xNzVfMGMxMWNmZDI3MjQwZTViYjE2ZTU2YmQwMjAwMDEzNjk2ZTNmZGVhYzcwZGI4MjQ5NDdhMzgxOTBkZjYzMGRjMjo='), content_type("application/octet-stream"), accept("application/json"))
+
+content <- content(resp)
+
+content$meters[[1]]$id
+
+#resp_json$meters$intervals
+
+intervals <- content$meters[[1]]$intervals
+
+intervals_df <- data.table::rbindlist(intervals) #, fill= TRUE) #fill doesn't seem to matter
+#IT WORKS!!!
+
+#intervals_df
+
+```
+
+```{r eval=FALSE, include=FALSE}
+#intervals
+#content$meters[[1]]$intervals[[1]]
+#str(content$meters[[1]]$intervals)
+
+#as.data.frame(content$meters[[1]]$intervals)
+#error
+```
+
+```{r eval=FALSE, include=FALSE}
+#print(as.data.frame(do.call(rbind, intervals))) 
+```
+
+```{r eval=FALSE, include=FALSE}
+n.obs <- sapply(intervals, length)
+seq.max <- seq_len(max(n.obs))
+mat <- t(sapply(intervals, "[", i = seq.max))
+mat
+str(mat)
+as.data.frame(mat)
+as_tibble(mat)
+
+
+```
+
+```{r eval=FALSE, include=FALSE}
+
+#toJSON(response, pretty = TRUE)
+```
+
+```{r eval=FALSE, include=FALSE}
+content$first_interval_discovered
+content$meters
+
+df <- fromJSON(content(resp, as = "text"))
+df
+
+df %>% 
+  unnest_wider(meters)
+
+content$meters
+
+content$meters[1]
+
+char <- rawToChar(resp$content)
+char
+
+#Convert to df 
+#df <- 
+fromJSON(char, flatten = TRUE)
+
+df$meters
+
+resp$data$data
+
+#resp_json <- 
+fromJSON(content(resp, as = "text"))
+
+#resp_json
+
+#content(resp, as = "text")
+#fromJSON(content(resp, as = "parsed", type = "application/json"))
+#as.data.frame(content(resp, as = "parsed", type = "application/json"))
+
+
+```
+
+
+Explore the data
+```{r}
+(intervals_df <- intervals_df %>% 
+  mutate(start = as_datetime(start), end = as_datetime(end)) %>% 
+  #arrange(desc(electricity_consumption))
+  arrange(desc(net_electricity_consumption))
+)
+
+#ggplot(intervals_df, aes(start, electricity_consumption)) +
+ggplot(intervals_df, aes(start, net_electricity_consumption)) +
+  geom_point()
+```
+
+
+```{r}
+sample <- intervals_df %>% 
+  mutate(date = date(start), time = as_hms(format(start, format = "%H:%M:%S"))) %>% 
+  filter(date > "2023-04-06" & date <= "2023-04-20")
+
+ggplot(sample, aes(start, net_electricity_consumption)) +
+  geom_point()
+
+ggplot(sample, aes(time, net_electricity_consumption, color=factor(date))) +
+  geom_point() #+
+  #ylim(0,700)
+
+```
+
+```{r}
+
+sample <- intervals_df %>% 
+  mutate(date = date(start), time = as_hms(format(start, format = "%H:%M:%S")))
+
+#sample
+
+sample <- sample %>% 
+  mutate(next_net = lead(net_electricity_consumption, order_by = start), prev_net = lag(net_electricity_consumption, order_by = start)) %>% 
+  mutate(next2 = lead(net_electricity_consumption, order_by = start, n = 2L), next3 = lead(net_electricity_consumption, order_by = start, n = 3L)) %>% 
+  mutate(nexthour_net = net_electricity_consumption + next_net + next2 + next3) %>% 
+  mutate(streak = case_when(net_electricity_consumption > 2000 & (next_net > 2000 | prev_net > 2000) ~ 1)) %>% 
+  #mutate(streak_net = ) %>% 
+  mutate(start_of_ev_charge = case_when(streak == 1 & is.na(lag(streak, order_by = start)) ~ start), #& nexthour_net >= 10000
+         end_of_ev_charge = case_when(streak == 1 & is.na(lead(streak, order_by = start)) ~ end), 
+         ev_charge_time = 0, ev_charge_net = 0, ev_charge_min = 0, ev_charge_max = 0, customer_id = customer_id) %>% 
+  arrange(start)
+
+#sample$ev_charge_time <- 0
+
+i <- 2
+while (i <= nrow(sample)) {
+  sample[i]$start_of_ev_charge <- case_when(sample[i]$streak == 1 & is.na(sample[i-1]$streak) ~ sample[i]$start_of_ev_charge, 
+                                       sample[i]$streak == 1 & !is.na(sample[i-1]$streak) ~ sample[i-1]$start_of_ev_charge)
+  sample[i]$ev_charge_time <- case_when(sample[i]$streak == 1 & is.na(sample[i-1]$streak) ~ 15, 
+                                       sample[i]$streak == 1 & !is.na(sample[i-1]$streak) ~ 15 + sample[i-1]$ev_charge_time)
+  sample[i]$ev_charge_net <- case_when(sample[i]$streak == 1 & is.na(sample[i-1]$streak) ~ sample[i]$net_electricity_consumption, 
+                                       sample[i]$streak == 1 & !is.na(sample[i-1]$streak) ~ sample[i]$net_electricity_consumption + sample[i-1]$ev_charge_net)
+  
+  sample[i]$ev_charge_min <- case_when(sample[i]$streak == 1 & is.na(sample[i-1]$streak) ~ sample[i]$net_electricity_consumption, 
+                                       sample[i]$streak == 1 & !is.na(sample[i-1]$streak) & sample[i]$net_electricity_consumption <= sample[i-1]$ev_charge_min ~ sample[i]$net_electricity_consumption, 
+                                       sample[i]$streak == 1 & !is.na(sample[i-1]$streak) & sample[i]$net_electricity_consumption > sample[i-1]$ev_charge_min ~ sample[i-1]$ev_charge_min )
+  
+  sample[i]$ev_charge_max <- case_when(sample[i]$streak == 1 & is.na(sample[i-1]$streak) ~ sample[i]$net_electricity_consumption, 
+                                       sample[i]$streak == 1 & !is.na(sample[i-1]$streak) & sample[i]$net_electricity_consumption >= sample[i-1]$ev_charge_max ~ sample[i]$net_electricity_consumption, 
+                                       sample[i]$streak == 1 & !is.na(sample[i-1]$streak) & sample[i]$net_electricity_consumption < sample[i-1]$ev_charge_max ~ sample[i-1]$ev_charge_max )
+  
+  i <- i + 1
+}
+
+#sample %>% 
+#  filter(streak == 1)
+
+#streaks<- sample %>% 
+streaks_ind <- sample %>% 
+  filter(!is.na(end_of_ev_charge)) %>% 
+  select(customer_id, start_of_ev_charge, end_of_ev_charge, ev_charge_min, ev_charge_max)
+
+streaks_ind
+
+streaks <- rbind(streaks, streaks_ind)
+
+#streaks <- streaks %>% filter(customer_id != 2301)
+
+#write_csv(streaks, "ev_charging_sessions.csv")
+
+```
+
+
+
